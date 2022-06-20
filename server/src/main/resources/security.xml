@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+
+    <!--    <security:global-method-security jsr250-annotations="enabled" pre-post-annotations="enabled">-->
+    <!--        <security:expression-handler ref="defaultExpressionHandler"/>-->
+    <!--    </security:global-method-security>-->
+
+    <bean id="passwordEncoder" class="org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder"/>
+
+    <bean id="consoleAuditLogger" class="org.springframework.security.acls.domain.ConsoleAuditLogger"/>
+
+    <bean id="aclAuthorizationStrategy" class="org.springframework.security.acls.domain.AclAuthorizationStrategyImpl">
+        <constructor-arg>
+            <list>
+                <bean class="org.springframework.security.core.authority.SimpleGrantedAuthority">
+                    <constructor-arg value="ROLE_ADMIN"/>
+                </bean>
+            </list>
+        </constructor-arg>
+    </bean>
+
+    <bean id="aclCache" class="org.springframework.security.acls.domain.EhCacheBasedAclCache">
+        <constructor-arg index="0">
+            <bean class="org.springframework.cache.ehcache.EhCacheFactoryBean">
+                <property name="cacheManager">
+                    <bean class="org.springframework.cache.ehcache.EhCacheManagerFactoryBean"/>
+                </property>
+                <property name="cacheName" value="aclCache"/>
+            </bean>
+        </constructor-arg>
+
+        <constructor-arg index="1">
+            <bean class="com.meegoo.quizproject.server.security.acl.BitwisePermissionGrantingStrategy">
+                <constructor-arg ref="consoleAuditLogger"/>
+            </bean>
+        </constructor-arg>
+
+        <constructor-arg index="2" ref="aclAuthorizationStrategy"/>
+    </bean>
+
+    <bean id="lookupStrategy" class="com.meegoo.quizproject.server.security.acl.GroupLookupStrategy">
+        <constructor-arg index="0" ref="dataSource"/>
+        <constructor-arg index="1" ref="aclCache"/>
+        <constructor-arg index="2" ref="aclAuthorizationStrategy"/>
+        <constructor-arg index="3" ref="consoleAuditLogger"/>
+        <property name="aclClassIdSupported" value="true"/>
+        <property name="permissionFactory" ref="permissionFactory"/>
+    </bean>
+
+    <bean id="aclService" class="com.meegoo.quizproject.server.security.acl.GroupJdbcMutableAclService">
+        <constructor-arg index="0" ref="dataSource"/>
+        <constructor-arg index="1" ref="lookupStrategy"/>
+        <constructor-arg index="2" ref="aclCache"/>
+        <property name="aclClassIdSupported" value="true"/>
+        <property name="classIdentityQuery" value="select currval(pg_get_serial_sequence('acl_class', 'id'));"/>
+        <property name="sidIdentityQuery" value="select currval(pg_get_serial_sequence('acl_sid', 'id'));"/>
+    </bean>
+
+    <bean id="objectIdentityRetrievalStrategy"
+          class="com.meegoo.quizproject.server.security.acl.CustomObjectIdentityRetrievalStrategy"/>
+
+    <bean id="groupSidRetrievalStrategy" class="com.meegoo.quizproject.server.security.acl.GroupSidRetrievalStrategy"/>
+
+    <bean id="permissionFactory" class="org.springframework.security.acls.domain.DefaultPermissionFactory">
+        <constructor-arg name="permissionClass" value="com.meegoo.quizproject.server.security.acl.QuizPermission"/>
+    </bean>
+
+    <bean id="permissionEvaluator" class="com.meegoo.quizproject.server.security.acl.AclPermissionEvaluatorWithOwner">
+        <constructor-arg ref="aclService"/>
+        <property name="sidRetrievalStrategy" ref="groupSidRetrievalStrategy"/>
+        <property name="objectIdentityRetrievalStrategy" ref="objectIdentityRetrievalStrategy"/>
+        <property name="permissionFactory" ref="permissionFactory"/>
+    </bean>
+
+    <bean id="defaultExpressionHandler"
+          class="com.meegoo.quizproject.server.security.acl.ssel.QuizMethodSecurityExpressionHandler">
+        <property name="permissionEvaluator" ref="permissionEvaluator"/>
+    </bean>
+</beans>
